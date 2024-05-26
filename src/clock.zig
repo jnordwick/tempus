@@ -31,6 +31,9 @@ const time_ratios: [9]u64 = .{
     1000 * 1000 * 1000 * 60 * 60 * 24 * 365,
 };
 
+/// Calculates number of x timeunits in a y. Days are assumed to have 24
+/// hours and years assumed to have 365 days.
+/// return: notice the integer type, and fraction part is rounded off
 pub fn per(comptime x: TimeUnit, comptime y: TimeUnit) u64 {
     return time_ratios[@intFromEnum(y)] / time_ratios[@intFromEnum(x)];
 }
@@ -52,14 +55,17 @@ pub fn Clock(comptime clkid: i32) type {
         const MomentDiff_type = MomentDiff(This);
 
         const clockid: i32 = clkid;
-        /// zero ticks_per_second implies no relation to wall clock time.
-        /// FIXME terrible way to represent this because those clocks still
-        /// tick at a constant rate, use epoch instead
-        /// TODO put epoch here
+        const epoch_offset: i64 = b: {
+            if (clkid >= 0)
+                break :b 0;
+            const _freq = tsc.calibrate_freq(50);
+            break :b @intFromFloat(tsc.epoch_offset(_freq));
+        };
         var ticks_per_second: u64 = b: {
             if (clkid >= 0)
                 break :b per(.nanosec, .second);
-            break :b @intFromFloat(tsc.calibrate_freq(50));
+            const _freq = tsc.calibrate_freq(50);
+            break :b @intFromFloat(_freq);
         };
 
         last: Moment_type,
@@ -157,16 +163,31 @@ pub fn get_clock(clkid: i32) !u64 {
 
 //------ TESTS ------
 const TT = std.testing;
-test "get_clock" {
+
+test get_clock {
     const t = try get_clock(sys.CLOCK.MONOTONIC);
     try TT.expect(t > 0);
 }
 
-test "clock" {
+test Clock {
     const C = Clock(sys.CLOCK.MONOTONIC);
     var c = try C.init();
     const l = c.last;
     const n = try c.now();
     try TT.expect(l.tick > 0);
     try TT.expect(n.tick > 0);
+}
+
+test "tsc clock" {
+    const C = Clock(tsc.CLOCK_TSC);
+    var c = try C.init();
+    const l = c.last;
+    const n = try c.now();
+    try TT.expect(l.tick > 0);
+    try TT.expect(n.tick > 0);
+}
+
+test per {
+    try TT.expectEqual(per(.microsec, .hour), 60 * 60 * 1000 * 1000);
+    try TT.expectEqual(per(.hour, .week), 7 * 24);
 }

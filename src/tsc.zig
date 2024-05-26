@@ -74,20 +74,18 @@ pub fn calibrate_freq(millis: u64) !f64 {
     return ticks / secs;
 }
 
-pub fn epoch_offset(freq: f64) !u64 {
-    const CLK = comptime std.os.linux.CLOCK.TAI;
+pub fn epoch_offset(freq: f64) !i64 {
+    const CLK = std.os.linux.CLOCK.TAI;
     const n = 4;
-
-    const per_ns = freq / 1e9;
 
     var rs: [2 * n]u64 = undefined;
     var cs: [2 * n]u64 = undefined;
     inline for (0..n) |i| {
         rs[i] = rdtscp_fenced();
-        cs[i] = clock.get_clock(CLK);
+        cs[i] = try clock.get_clock(CLK);
     }
     inline for (n..2 * n) |i| {
-        cs[i] = clock.get_clock(CLK);
+        cs[i] = try clock.get_clock(CLK);
         rs[i] = rdtscp_fenced();
     }
 
@@ -98,9 +96,11 @@ pub fn epoch_offset(freq: f64) !u64 {
         rsum += @floatFromInt(rs[i]);
         csum += @floatFromInt(cs[i]);
     }
-    rsum = rsum / (denom * per_ns);
-    csum = csum / denom;
-    const fdiff = csum - rsum;
+
+    const ticks_per_ns = freq / 1e9;
+    rsum /= ticks_per_ns;
+
+    const fdiff = (csum - rsum) / denom;
     const diff: i64 = @intFromFloat(fdiff);
     return diff;
 }
@@ -121,6 +121,19 @@ test "calibrate" {
     const tot_tsc: f64 = @floatFromInt(stop_tsc - start_tsc);
     const guess_tsc: f64 = (fr / 1e9) * tot_wall;
     try expectApprox(guess_tsc, tot_tsc, 0.01 * tot_tsc);
+}
+
+test "epoch" {
+    const fr = try calibrate_freq(50);
+    const off = try epoch_offset(fr);
+    std.posix.nanosleep(0, 100 * 1000 * 1000); // 10 ms
+    const ticks_per_ns = fr / 1e9;
+    const r: f128 = @floatFromInt(rdtscp());
+    const rr: i64 = @intFromFloat(r / ticks_per_ns);
+    const c: i64 = @intCast(try clock.get_clock(std.os.linux.CLOCK.TAI));
+    const new: i64 = @intCast(rr + off);
+    const diff = new - c;
+    try std.testing.expectApproxEqAbs(0, @as(f64, @floatFromInt(diff)), 10000); // 10 us
 }
 
 test "rdtscp" {
