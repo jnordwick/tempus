@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Month = enum(u16) {
+pub const Month = enum(u16) {
     jan = 1,
     feb,
     mar,
@@ -15,7 +15,7 @@ const Month = enum(u16) {
     dec,
 };
 
-const Weekday = enum(u16) {
+pub const Weekday = enum(u16) {
     mon = 1,
     tue,
     wed,
@@ -25,7 +25,7 @@ const Weekday = enum(u16) {
     sun,
 };
 
-const DateError = error{
+pub const DateError = error{
     bad_year,
     bad_month,
     bad_day,
@@ -44,7 +44,7 @@ const DateError = error{
 /// to be done unsigned. Month change to Mar = 0, Jan = 11, and
 /// Feb = 12. day might change to zero based too. The accesors
 /// will adjust for all this.
-const Date = packed struct(u64) {
+pub const Date = packed struct(u64) {
     _day: u16,
     _month: u16,
     _year: i32,
