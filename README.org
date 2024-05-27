@@ -1,29 +1,25 @@
-* Purpose *
-This is a small library for dealing with time. It focus on performance over
-features with a solid, basic API.
+*Purpose*
 
-- It uses Cassio Neri's Gregorian Calendar Dates with some small
-modifications (research paper link in the source)
+This is a small library for dealing with time. It focus on performance over features with a solid, basic API.
+
+- It uses Cassio Neri's Gregorian Calendar Dates with some small modifications (research paper link in the source)
 - has simple cloocks that use clock_gettime underneath
 - has clocks that either RDTSC or RDTSCP
-- RDTSC fruequency and epoch offset calculation so they
-can be used for datetimes as a clock_gettime replacement
-- fast timestamp generation (format is hardcoded for now to
-YYYY-MM-DDThh:mm:ss.nnnnnnnnn).
-- everything deals with nanoseconds instead of the (second, nanosecond) pair
-that is common purely for performance.
+- RDTSC fruequency and epoch offset calculation so they can be used for datetimes as a clock_gettime replacement
+- fast timestamp generation (format is hardcoded for now to YYYY-MM-DDThh:mm:ss.nnnnnnnnn).
+- everything deals with nanoseconds instead of the (second, nanosecond) pair that is common purely for performance.
 
-Things I'm working on
+**Things I'm working on**
 
+- using euclidean affine functions for the divmod operations (wich such limited range I can prob do better than the compiler)
 - documentation
 - better api
-- compile time format specification for timestamp gen (I don't want to sac
-any performance so need to see how difficult this would be).
+- compile time format specification for timestamp gen (I don't want to sac any performance so need to see how difficult this would be).
 - parametrizing the code to move the epoch off the Unix 1970-1-1
 - benchmarking
-- considering parameterizing the clocks and date to allow i128s or even i32
-that would be useful with the shifted epoch code
+- considering parameterizing the clocks and date to allow i128s or even i32 that would be useful with the shifted epoch code
 
-Things that will likely never be done
+**Things that will likely never be done**
 
 - timezones
+
