@@ -5,6 +5,14 @@ const date = @import("date.zig");
 const per = @import("clock.zig").per;
 const TU = @import("clock.zig").TimeUnit;
 
+/// A textual timestamp, currently fixed at "yyyy-MM-ddThh:mm:ss.nnnnnnnnn".
+/// It does not have it own clock, but takes in a nanosecond value.  On init
+/// and update calls it will check to see if it is a different day,  if so it
+/// simply do a full recalculation, but if still the same day (the check is
+/// just a comparison against a pre calculated next_day value), it will try
+/// to only update the parts of the time component it needs to do to cut down
+/// on the expensive integer division and modulos. So if you updated in the last
+/// second, the call will only update the nanosecond part.
 const Timestamp = struct {
     const This = @This();
     const format = "yyyy-MM-ddThh:mm:ss.nnnnnnnnn";
@@ -18,16 +26,18 @@ const Timestamp = struct {
     rata_die: i32 = undefined,
     date: date.Date = undefined,
 
-    text: [format.len]u8 = undefined,
+    text: [format.len]u8 = format.*,
 
+    /// initialize a timestamp with time. text will be valid upon return.
     pub fn init(nanos: u64) This {
         var t: This = .{ .nanos = nanos, .last_tempore = 0 };
         t.recalc();
         return t;
     }
 
-    fn update(this: *This, nanos: u64) void {
-        this.nanos = nanos;
+    /// update the timestamp with the new value. This attempts to only
+    /// update the fewest parts of the time as long as still the same day.
+    pub fn update(this: *This, nanos: u64) void {
         if (nanos >= this.next_day)
             return this.recalc();
 
@@ -47,7 +57,6 @@ const Timestamp = struct {
 
     fn full_text(this: *This) void {
         this.full_date();
-        this.text[10] = 'T';
         this.full_time();
     }
 
@@ -57,10 +66,17 @@ const Timestamp = struct {
         const d = this.date._day;
 
         write_int(this.text[0..4], @intCast(y));
-        this.text[4] = '-';
         write_int(this.text[5..7], m);
-        this.text[7] = '-';
         write_int(this.text[8..10], d);
+    }
+
+    fn full_time(this: *This) void {
+        var t = this.tempore;
+        t = update_part(per(.nanosec, .second), t, this.text[20..29]);
+        t = update_part(per(.second, .minute), t, this.text[17..19]);
+        t = update_part(per(.minute, .hour), t, this.text[14..16]);
+        write_int(this.text[11..13], @intCast(t));
+        this.last_tempore = this.tempore;
     }
 
     fn partial_time(this: *This) void {
@@ -71,73 +87,33 @@ const Timestamp = struct {
         const nanos_in_hour = per(.nanosec, .hour);
         const nanos_in_minute = per(.nanosec, .minute);
         const nanos_in_second = per(.nanosec, .second);
-        const secs_in_minute = per(.second, .minute);
-        const mins_in_hour = per(.minute, .hour);
 
         // zig fmt: off
         if (diff < nanos_in_second) {
-            const n: u32 = @intCast(t % nanos_in_second);
-            write_int(this.text[20..29], n);
+            t = update_part(per(.nanosec, .second), t, this.text[20 .. 29]);
         }
         else if (diff < nanos_in_minute) {
-            const n: u32 = @intCast(t % nanos_in_second);
-            t = t / nanos_in_second;
-            write_int(this.text[20..29], n);
-            this.text[19] = '.';
-
-            const s: u32 = @intCast(t % secs_in_minute);
-            t = t / secs_in_minute;
-            write_int(this.text[17..19], s);
-            this.text[16] = ':';
+            t = update_part(per(.nanosec, .second), t, this.text[20 .. 29]);
+            t = update_part(per(.second, .minute), t, this.text[17 .. 19]);
         }
         else if (diff < nanos_in_hour) {
-            const n: u32 = @intCast(t % nanos_in_second);
-            t = t / nanos_in_second;
-            write_int(this.text[20..29], n);
-            this.text[19] = '.';
-
-            const s: u32 = @intCast(t % secs_in_minute);
-            t = t / secs_in_minute;
-            write_int(this.text[17..19], s);
-            this.text[16] = ':';
-
-            const m: u32 = @intCast(t % mins_in_hour);
-            t = t / mins_in_hour;
-            write_int(this.text[14..16], m);
-            this.text[13] = ':';
+            t = update_part(per(.nanosec, .second), t, this.text[20 .. 29]);
+            t = update_part(per(.second, .minute), t, this.text[17 .. 19]);
+            t = update_part(per(.minute, .hour), t, this.text[14 .. 16]);
         }
         else {
             this.full_time();
+            return;
         }
-    }
-
-    fn full_time(this: *This) void {
-        const nanos_in_second = per(.nanosec, .second);
-        const secs_in_minute = per(.second, .minute);
-        const mins_in_hour = per(.minute, .hour);
-
-        var t = this.tempore;
-
-        const n: u32 = @intCast(t % nanos_in_second);
-        t = t / nanos_in_second;
-        write_int(this.text[20..29], n);
-        this.text[19] = '.';
-
-        const s: u32 = @intCast(t % secs_in_minute);
-        t = t / secs_in_minute;
-        write_int(this.text[17..19], s);
-        this.text[16] = ':';
-
-        const m: u32 = @intCast(t % mins_in_hour);
-        t = t / mins_in_hour;
-        write_int(this.text[14..16], m);
-        this.text[13] = ':';
-
-        const h: u32 = @intCast(t);
-        write_int(this.text[11..13], h);
-
         this.last_tempore = this.tempore;
     }
+
+    fn update_part(ratio: u64, t: u64, buf: []u8) u64 {
+        const m: u32 = @intCast(t % ratio);
+        write_int(buf, m);
+        return t / ratio;
+    }
+
 };
 
 fn write_int(buf: []u8, num: u32) void {
@@ -167,15 +143,17 @@ test write_int {
     try TT.expectEqualSlices(u8, "0000", &b);
 }
 
-test "write" {
-    var s = 1716753307 * per(.nanosec, .second) + 989767545;
-    const ans1 = "2024-05-26T19:55:07.989767545";
-    const ans2 = "2024-05-26T19:56:10.999777555";
-    var t = Timestamp.init(s);
-    t.recalc();
-    try TT.expectEqualSlices(u8, ans1, &t.text);
+test Timestamp {
+    const now = 1716753307 * per(.nanosec, .second) + 989767545;
+    const delta = per(.nanosec, .minute) + 3 * per(.nanosec, .second) + 10010010; // 1m 3s 10010010ns
+    const later = now + delta;
 
-    s += per(.nanosec, .minute) + 3 * per(.nanosec, .second) + 10010010;
-    t.update(s);
-    try TT.expectEqualSlices(u8, ans2, &t.text);
+    const ans_now = "2024-05-26T19:55:07.989767545";
+    const ans_later = "2024-05-26T19:56:10.999777555";
+
+    var t = Timestamp.init(now);
+    try TT.expectEqualSlices(u8, ans_now, &t.text);
+
+    t.update(later);
+    try TT.expectEqualSlices(u8, ans_later, &t.text);
 }
